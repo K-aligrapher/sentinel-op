@@ -1,0 +1,30 @@
+incident_approval_card:
+  trigger_condition: "agent proposes fix requiring human approval"
+  render: |
+    Show a card with:
+    HEADER: 🔔 Approval Required — {incident_id}
+    ROW: Pod: {pod} | Namespace: {namespace} | Type: {incident_type}
+    SECTION: Root Cause — {rca_summary}
+    CODE DIFF:
+      - {proposed_fix}
+    METRICS: Risk Score: {risk_score}/10 | Sandbox: {sandbox_result}
+    TIMER: Countdown from {approval_timeout_minutes}:00 minutes (readable by screen readers)
+    BUTTONS: [✅ Approve Fix] [❌ Reject] [📋 Full RCA]
+
+subagent_status_card:
+  trigger_condition: "subagents are actively running"
+  render: |
+    2x2 grid showing:
+    [K8s Inspector] {k8s_status_icon} {k8s_result_line}
+    [API Inspector] {api_status_icon} {api_result_line}
+    [Log Analyzer]  {log_status_icon} {log_result_line}
+    [DB Inspector]  {db_status_icon}  {db_result_line}
+    spinner while running -> checkmark when done -> one-line result summary when complete
+
+incident_resolved_card:
+  trigger_condition: "alert cleared after fix applied"
+  render: |
+    HEADER: ✅ {incident_id} — RESOLVED
+    ROW: Fix applied: {fix_applied}
+    ROW: MTTR: {mttr_seconds}s | PR: {pull_request_url}
+    LINK: View full post-mortem in Session History

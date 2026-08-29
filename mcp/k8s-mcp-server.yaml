@@ -1,0 +1,22 @@
+# kubernetes-mcp-server — run as:
+#   docker run -d --name k8s-mcp \
+#     -v ~/.kube:/home/appuser/.kube:ro \
+#     -e K8S_MCP_TRANSPORT=streamable-http \
+#     -p 8000:8000 \
+#     ghcr.io/containers/kubernetes-mcp-server:latest
+image: ghcr.io/containers/kubernetes-mcp-server:latest
+port: 8000
+transport: streamable-http
+volumes:
+  - "~/.kube:/home/appuser/.kube:ro"
+environment:
+  K8S_MCP_TRANSPORT: streamable-http
+health: http://localhost:8000/healthz
+# Read-only tool surface exposed to SENTINEL subagents:
+allowed_tools:
+  - pods_get
+  - pods_list
+  - pods_log
+  - events_list
+  - describe
+  - top

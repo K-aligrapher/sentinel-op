@@ -1,0 +1,42 @@
+theme:
+  name: sentinel-dark
+  background: "#0D1117"
+  surface: "#161B22"
+  border: "#30363D"
+  accent: "#58A6FF"
+  danger: "#F85149"
+  success: "#3FB950"
+  warning: "#D29922"
+  text_primary: "#C9D1D9"
+  text_muted: "#8B949E"
+  font_mono: "JetBrains Mono"
+  font_display: "Inter"
+
+layout:
+  header: "🛡️ SENTINEL — Production Incident Commander"
+  sidebar:
+    - label: "Active Incidents"
+      icon: "🔴"
+      path: "/"
+    - label: "Session History"
+      icon: "📋"
+      path: "/history"
+    - label: "Skills Library"
+      icon: "📚"
+      path: "/skills"
+    - label: "Logs"
+      icon: "📊"
+      path: "/logs"
+
+status_badges:
+  CRITICAL: { color: "#F85149", animation: pulse, label: "CRITICAL" }
+  INVESTIGATING: { color: "#D29922", animation: spinner, label: "INVESTIGATING" }
+  AWAITING_APPROVAL: { color: "#58A6FF", animation: slow-pulse, label: "AWAITING APPROVAL" }
+  RESOLVED: { color: "#3FB950", animation: none, label: "RESOLVED" }
+  ESCALATED: { color: "#8B949E", animation: none, label: "ESCALATED" }
+
+accessibility:
+  color_only_indicators: false     # every status also carries a text label
+  keyboard_navigable_actions: true
+  aria_labels_on_icon_buttons: true
+  min_contrast_ratio: 4.5

@@ -1,0 +1,38 @@
+# Development stack. The canonical deployment compose file is deploy/docker-compose.yml.
+version: "3.9"
+
+services:
+  sentinel-agent:
+    build: .
+    env_file: [.env]
+    environment:
+      PROMETHEUS_URL: "http://host.docker.internal:9090"
+      K8S_MCP_URL: "http://k8s-mcp:8000"
+    volumes:
+      - ./logs:/app/logs
+      - ./skills:/app/skills
+      - ./config:/app/config
+    ports:
+      - "9093:9093"   # alert webhook receiver
+    depends_on: [k8s-mcp, prometheus-mcp, github-mcp]
+
+  k8s-mcp:
+    image: ghcr.io/containers/kubernetes-mcp-server:latest
+    ports: ["8000:8000"]
+    volumes:
+      - "${HOME}/.kube:/home/appuser/.kube:ro"
+    environment:
+      K8S_MCP_TRANSPORT: streamable-http
+
+  prometheus-mcp:
+    image: node:22-alpine
+    command: sh -c "npx --yes prometheus-mcp@latest http --port 8001"
+    ports: ["8001:8001"]
+    environment:
+      PROMETHEUS_URL: "http://host.docker.internal:9090"
+
+  github-mcp:
+    image: ghcr.io/github/github-mcp-server:latest
+    ports: ["8002:8080"]
+    environment:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"

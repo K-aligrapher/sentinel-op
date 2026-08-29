@@ -1,0 +1,29 @@
+groups:
+  - name: sentinel.rules
+    rules:
+      - alert: PodCrashLoopBackOff
+        expr: kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          sentinel_type: crashloop
+        annotations:
+          summary: "Pod {{ $labels.pod }} is in CrashLoopBackOff"
+
+      - alert: HighAPIErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          sentinel_type: api_errors
+        annotations:
+          summary: "API 5xx error rate above 5% for {{ $labels.service }}"
+
+      - alert: DBConnectionTimeout
+        expr: pg_stat_database_blk_read_time > 5000
+        for: 1m
+        labels:
+          severity: warning
+          sentinel_type: db_timeout
+        annotations:
+          summary: "Database {{ $labels.datname }} read time above 5s"

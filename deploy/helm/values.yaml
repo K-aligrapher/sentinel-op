@@ -1,0 +1,28 @@
+image:
+  repository: ghcr.io/prathvi9607/sentinel
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+env:
+  LOG_LEVEL: INFO
+  PROMETHEUS_URL: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+  K8S_MCP_URL: http://k8s-mcp.sentinel-system:8000
+  ALERT_WEBHOOK_PORT: "9093"
+  APPROVAL_TIMEOUT_MINUTES: "15"
+  SENTINEL_APPROVAL_MODE: file
+
+# Secrets are supplied by an existing Kubernetes Secret, never inlined here.
+existingSecret: sentinel-secrets
+
+service:
+  port: 9093
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: 500m, memory: 512Mi }
+
+serviceAccount:
+  create: false
+  name: sentinel-agent

@@ -1,0 +1,28 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Byte-compile all source
+        run: python -m compileall -q agent tools session security scripts
+      - name: Unit tests
+        run: pytest tests/unit -v
+
+  qodo-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Qodo Review
+        if: ${{ secrets.QODO_API_KEY != '' }}
+        uses: qodo-ai/qodo-ci@v1
+        with:
+          api_key: ${{ secrets.QODO_API_KEY }}
