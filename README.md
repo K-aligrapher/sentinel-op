@@ -20,17 +20,22 @@ expression fits.
 ![Operator console](docs/media/01.png)
 *Operator console (Sentinel by YukClara) — parallel investigation, the live event stream and the immutable audit trail, with the approval gate before anything irreversible.*
 
+
 ![Incident view](docs/media/02.jpeg)
 *The incident view for a live CrashLoopBackOff (INC-2026-001) — four inspectors, synthesized root cause, sandbox-validated fix, risk score, and the human decision.*
+
 
 ![Fix pull request](docs/media/03.png)
 *Every remediation ships as a pull request — RCA, evidence, risk score and the exact `fix_plan` patch, opened by the agent for human review.*
 
+
 ![Pull request history](docs/media/04.png)
 *Pull-request history — each incident SENTINEL closes leaves a reviewed PR behind.*
 
+
 ![Kubernetes cluster](docs/media/05.jpeg)
 *The cluster SENTINEL operates on — minikube + kube-prometheus-stack and the demo workload, via the Kubernetes Dashboard.*
+
 ---
 
 ## Tech stack
