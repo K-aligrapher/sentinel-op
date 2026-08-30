@@ -31,9 +31,6 @@ expression fits.
 
 ![Kubernetes cluster](docs/media/05.jpeg)
 *The cluster SENTINEL operates on — minikube + kube-prometheus-stack and the demo workload, via the Kubernetes Dashboard.*
-
-> Screenshots live in `docs/media/`. Drop the five PNGs there (or update the paths) before publishing.
-
 ---
 
 ## Tech stack
