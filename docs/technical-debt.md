@@ -10,6 +10,6 @@ Tracked low-severity items and known limitations. Address post-hackathon.
 | TD-4 | 3 incident types only | Limited coverage | Add SKILL.md runbooks incrementally |
 | TD-5 | Mock PagerDuty webhook | Demo only | PagerDuty Events API v2 |
 | TD-6 | ~~`_apply_fix` patches a marker annotation~~ **Done** — `rca_synthesizer` emits a structured `fix_plan` and `_apply_fix` renders it into a real `kubectl patch` (memory limit) / `rollout undo` (rollback) / `MANUAL` (pool, unclear) | — | Deployment name is a heuristic (ownerRef minus ReplicaSet hash); confirm against `kubectl get deploy` |
-| TD-7 | GitHub PR creation is described in the runbook but not wired into the orchestrator | No PR in offline runs | Add a `github` MCP call after a successful apply |
-| TD-8 | Approval provider polls a file every 2s | Fine for demo | Native TrueForge approval callback / websocket |
+| TD-7 | ~~GitHub PR creation not wired in~~ **Done** — `tools/github_pr.py` opens a branch + `incidents/<id>.md` note + PR (GitHub REST) after an approved fix; `SKIPPED` without creds | — | Uses the REST API directly, not the `github` MCP server; swap if MCP tool parity is required |
+| TD-8 | ~~Approval provider polls a file~~ **Done** — `CallbackApprovalProvider` waits on a Future resolved by `POST /api/v1/approvals/<id>`; `file` + `auto` remain as fallbacks | — | The approval-card POST targets a guessed `TRUEFORGE_URL/api/approvals` path — confirm against the real TrueForge API |
 | TD-9 | Prometheus verify returns `False` when Prometheus is unreachable | Incident marked unresolved | Distinguish "unverified" from "still firing" |

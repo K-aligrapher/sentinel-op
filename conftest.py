@@ -12,6 +12,6 @@ def _isolated_env(tmp_path, monkeypatch):
     monkeypatch.setenv("LOG_DIR", str(logs))
     monkeypatch.setenv("SESSION_DB_PATH", str(logs / "incidents.db"))
     monkeypatch.setenv("SENTINEL_SKIP_ENV_CHECK", "1")
-    monkeypatch.delenv("DAYTONA_API_KEY", raising=False)
-    monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+    for var in ("DAYTONA_API_KEY", "SLACK_WEBHOOK_URL", "GITHUB_TOKEN", "GITHUB_REPO"):
+        monkeypatch.delenv(var, raising=False)
     yield

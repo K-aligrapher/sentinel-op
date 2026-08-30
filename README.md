@@ -32,7 +32,8 @@ sentinel/
 │   └── utils/{retry.py,circuit_breaker.py}
 ├── tools/
 │   ├── sandbox_executor.py     # Daytona: create → exec → ALWAYS destroy
-│   ├── approval_handler.py     # file / auto approval providers + timeout → escalate
+│   ├── approval_handler.py     # callback / file / auto providers + timeout → escalate
+│   ├── github_pr.py            # open a PR (branch + incident note) after an approved fix
 │   ├── escalation.py           # Slack notify + ERROR log
 │   └── sentinel_logger.py      # structlog JSON + secret masking
 ├── session/
@@ -72,17 +73,34 @@ python -m agent.main                                   # listens on :9093
 python scripts/trigger_alert.py crashloop
 ```
 
-Approve a proposed fix (default `SENTINEL_APPROVAL_MODE=file`):
+### Approving a proposed fix
 
-```bash
-echo APPROVED > logs/approvals/INC-2026-001.decision      # or REJECTED
-```
+`SENTINEL_APPROVAL_MODE` selects how the human decides:
 
-For an unattended demo set `SENTINEL_APPROVAL_MODE=auto` (+ `SENTINEL_AUTO_DECISION`).
+| Mode | How to approve |
+|------|----------------|
+| `callback` (default) | `POST /api/v1/approvals/<incident_id>` with `{"decision":"APPROVED"}` — this is the TrueForge UI callback; the agent also posts an approval card to `TRUEFORGE_URL`. |
+| `file` | `echo APPROVED > logs/approvals/<incident_id>.decision` (or `REJECTED`) |
+| `auto` | unattended — reads `SENTINEL_AUTO_DECISION` (default `APPROVED`) |
+
+Any mode escalates on `APPROVAL_TIMEOUT_MINUTES`. After an approved fix, if `GITHUB_TOKEN`
++ `GITHUB_REPO` are set (and `SENTINEL_OPEN_PR != 0`), SENTINEL opens a PR with the RCA
+and `fix_plan`.
 
 ---
 
-## One-command stack
+## Bring up the full demo stack
+
+Windows (Docker Desktop running, `.env` filled in):
+
+```powershell
+.\scripts\start_stack.ps1          # Minikube + Prometheus + demo pod + MCP servers + TrueForge
+python -m agent.main
+python scripts\trigger_alert.py crashloop
+.\scripts\stop_stack.ps1           # tear down (add -DeleteCluster to remove Minikube)
+```
+
+Or the container-only slice:
 
 ```bash
 docker compose -f deploy/docker-compose.yml up --build

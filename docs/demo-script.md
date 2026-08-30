@@ -28,7 +28,11 @@ kubectl get pods -w      # watch it crash
 
 ## 3:00 — Human approval (30s)
 - Approval card: fix diff `256Mi → 768Mi`, risk `2/10`, sandbox PASS, 15:00 countdown.
-- Click **✅ Approve Fix** (or `echo APPROVED > logs/approvals/<INC-ID>.decision`).
+- Click **✅ Approve Fix** in TrueForge — or hit the callback directly:
+  ```bash
+  curl -XPOST localhost:9093/api/v1/approvals/<INC-ID> -d '{"decision":"APPROVED"}'
+  ```
+- (`SENTINEL_APPROVAL_MODE=file` alternative: `echo APPROVED > logs/approvals/<INC-ID>.decision`)
 
 ## 3:30 — Fix applied (30s)
 - `kubectl patch` runs; pod stabilises.
@@ -41,6 +45,14 @@ kubectl get pods -w      # watch it crash
 ## 4:30 — Wrap (30s)
 - Show `logs/audit.jsonl` — every action recorded.
 - "This is what $300k/hr downtime looks like automated."
+
+---
+
+## 4:00 — Session saved + PR (30s)
+- Incident in Session History as `RESOLVED`.
+- If `GITHUB_TOKEN` + `GITHUB_REPO` are set, SENTINEL opened a PR: branch
+  `fix/inc-2026-001-memory_limit`, file `incidents/INC-2026-001.md` with the RCA +
+  `fix_plan` + live apply result. Show it on GitHub.
 
 ---
 

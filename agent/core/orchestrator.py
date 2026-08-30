@@ -22,8 +22,9 @@ from agent.subagents.k8s_inspector import inspect as k8s_inspect
 from agent.subagents.log_analyzer import analyze as log_analyze
 from security.audit_logger import log_action
 from session.incident_store import mark_resolved, next_incident_id, save_incident
-from tools.approval_handler import ApprovalProvider, Decision, get_approval_provider
+from tools.approval_handler import ApprovalProvider, Decision, get_approval_provider, submit_decision
 from tools.escalation import escalate
+from tools.github_pr import open_fix_pr
 from tools.sandbox_executor import exec_in_sandbox
 from tools.sentinel_logger import bind_incident
 
@@ -178,9 +179,11 @@ class Orchestrator:
                 self._apply_fix, incident_id, inv["rca"], inv["results"]["k8s"], pod, ns
             )
             resolved = await self._verify_resolved(incident_id, incident_type)
+            pr = await asyncio.to_thread(open_fix_pr, incident_id, incident_type, inv["rca"], applied)
             mark_resolved(incident_id, inv["rca"]["proposed_fix"], decision.value, resolved)
-            log.info("incident.closed", incident_id=incident_id, resolved=resolved, applied=applied.get("status"))
-            outcome = {"decision": decision.value, "applied": applied, "resolved": resolved}
+            log.info("incident.closed", incident_id=incident_id, resolved=resolved,
+                     applied=applied.get("status"), pr=pr.get("status"))
+            outcome = {"decision": decision.value, "applied": applied, "resolved": resolved, "pr": pr}
         else:
             escalate(incident_id, decision.value, inv["rca"])
             mark_resolved(incident_id, "", decision.value, False)
@@ -265,8 +268,21 @@ class Orchestrator:
         async def _health(_: "web.Request") -> "web.Response":
             return web.json_response({"status": "ok"})
 
+        async def _approve(request: "web.Request") -> "web.Response":
+            incident_id = request.match_info["incident_id"]
+            body = await request.json() if request.can_read_body else {}
+            raw = str(body.get("decision") or request.query.get("decision", ""))
+            matched = submit_decision(incident_id, raw)
+            log.info("approval.callback", incident_id=incident_id, decision=raw.upper(), matched=matched)
+            return web.json_response({"incident_id": incident_id, "accepted": matched},
+                                     status=200 if matched else 404)
+
         app = web.Application()
-        app.add_routes([web.post("/api/v1/alerts", _alerts), web.get("/healthz", _health)])
+        app.add_routes([
+            web.post("/api/v1/alerts", _alerts),
+            web.post("/api/v1/approvals/{incident_id}", _approve),
+            web.get("/healthz", _health),
+        ])
         runner = web.AppRunner(app)
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", port).start()

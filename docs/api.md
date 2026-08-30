@@ -15,6 +15,11 @@ Each alert needs `labels` with either `sentinel_type` (`crashloop` | `api_errors
 
 Response: `202 {"received": <n>}`. Each alert is handled on its own task.
 
+`POST /api/v1/approvals/{incident_id}` — the TrueForge UI callback. Body `{"decision":
+"APPROVED"}` (or `REJECTED`; also accepted as `?decision=`). Resolves the waiting
+`CallbackApprovalProvider`; a decision that arrives before the agent starts waiting is
+stashed and consumed when it does. → `200 {"accepted": true}`.
+
 `GET /healthz` → `200 {"status": "ok"}`.
 
 ## Python entry points
@@ -26,7 +31,9 @@ Response: `202 {"received": <n>}`. Each alert is handled on its own task.
 | `agent.core.rca_synthesizer` | `synthesize(*, k8s, api, logs, db, meta=None) -> dict` | `summary, root_cause, evidence, proposed_fix, fix_plan, risk_score, confidence` |
 | `agent.core.aggregator` | `aggregate(k8s, api, logs, db) -> dict` | `subagents, degraded, complete, results` |
 | `tools.sandbox_executor` | `exec_in_sandbox(script, incident_id, label) -> dict` | `status` ∈ `OK / FAIL / BLOCKED / SKIPPED / ERROR`; workspace always destroyed |
-| `tools.approval_handler` | `ApprovalProvider.request(*, incident_id, rca, risk_score, sandbox_result) -> Decision` | `APPROVED / REJECTED / ESCALATED`; timeout → escalate |
+| `tools.approval_handler` | `ApprovalProvider.request(*, incident_id, rca, risk_score, sandbox_result) -> Decision` | `APPROVED / REJECTED / ESCALATED`; timeout → escalate. Providers: `CallbackApprovalProvider` (default, HTTP callback + TrueForge card), `FileApprovalProvider`, `AutoApproveProvider` |
+| `tools.approval_handler` | `submit_decision(incident_id, raw) -> bool` | Deliver a callback decision (used by the `/api/v1/approvals` route) |
+| `tools.github_pr` | `open_fix_pr(incident_id, incident_type, rca, applied) -> dict` | Branch + `incidents/<id>.md` note + PR via GitHub REST; `status` ∈ `OK / SKIPPED / DISABLED / ERROR` |
 | `session.incident_store` | `save_incident`, `mark_resolved`, `load_incident`, `get_recent`, `next_incident_id` | SQLite (WAL) persistence; `INC-YYYY-NNN` ids |
 | `session.pattern_matcher` | `find_similar_patterns(...) -> list`, `suggest_from_history(type) -> str \| None` | Returns `[]` / `None`, never raises |
 | `security.input_sanitizer` | `is_safe_command(cmd) -> bool`, `mask_secrets(text) -> str` | Command allowlist + secret redaction |
@@ -52,5 +59,7 @@ Response: `202 {"received": <n>}`. Each alert is handled on its own task.
 
 ## Environment variables
 
-See `SENTINEL_PRD.md` §14-A and `.env.example`. Local-only toggles:
-`SENTINEL_SKIP_ENV_CHECK=1`, `SENTINEL_APPROVAL_MODE=auto`, `SENTINEL_AUTO_DECISION`.
+See `SENTINEL_PRD.md` §14-A and `.env.example`. Notable additions:
+`SENTINEL_APPROVAL_MODE` (`callback` | `file` | `auto`), `TRUEFORGE_URL`,
+`GITHUB_API_URL`, `GITHUB_DEFAULT_BRANCH`, `SENTINEL_OPEN_PR` (`0` to disable PRs).
+Local-only toggles: `SENTINEL_SKIP_ENV_CHECK=1`, `SENTINEL_AUTO_DECISION`.
