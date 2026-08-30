@@ -13,6 +13,71 @@ expression fits.
 
 ---
 
+## See it run
+
+▶ **[Watch the 3-minute demo →](https://www.youtube.com/watch?v=xlvv7PteXb0)**
+
+![Operator console](docs/media/01.png)
+*Operator console (Sentinel by YukClara) — parallel investigation, the live event stream and the immutable audit trail, with the approval gate before anything irreversible.*
+
+![Incident view](docs/media/02.jpeg)
+*The incident view for a live CrashLoopBackOff (INC-2026-001) — four inspectors, synthesized root cause, sandbox-validated fix, risk score, and the human decision.*
+
+![Fix pull request](docs/media/03.png)
+*Every remediation ships as a pull request — RCA, evidence, risk score and the exact `fix_plan` patch, opened by the agent for human review.*
+
+![Pull request history](docs/media/04.png)
+*Pull-request history — each incident SENTINEL closes leaves a reviewed PR behind.*
+
+![Kubernetes cluster](docs/media/05.jpeg)
+*The cluster SENTINEL operates on — minikube + kube-prometheus-stack and the demo workload, via the Kubernetes Dashboard.*
+
+> Screenshots live in `docs/media/`. Drop the five PNGs there (or update the paths) before publishing.
+
+---
+
+## Tech stack
+
+| Layer | What we use | Documentation |
+|-------|-------------|---------------|
+| **Agent harness** | **TrueForge** (TrueFoundry) — runtime, tool routing, parallel sub-agents, session, human-approval UI | [github.com/truefoundry/trueforge](https://github.com/truefoundry/trueforge) · [docs.truefoundry.com](https://docs.truefoundry.com/) |
+| **Code review** | **Qodo** — every pull request reviewed before merge | [docs.qodo.ai](https://docs.qodo.ai/) · [Qodo Merge docs](https://qodo-merge-docs.qodo.ai/) |
+| **Tool protocol** | **MCP** (Model Context Protocol) | [modelcontextprotocol.io](https://modelcontextprotocol.io/) |
+| **MCP servers** | [kubernetes-mcp-server](https://github.com/containers/kubernetes-mcp-server), [github-mcp-server](https://github.com/github/github-mcp-server), [prometheus-mcp](https://www.npmjs.com/package/prometheus-mcp) | linked |
+| **Reasoning model** | **Groq** | [console.groq.com/docs](https://console.groq.com/docs) |
+| **Code sandbox** | **Daytona** — create → exec → always destroy | [daytona.io/docs](https://www.daytona.io/docs) |
+| **Runtime** | Python 3.10+, asyncio, aiohttp, httpx, structlog | [aiohttp](https://docs.aiohttp.org/en/stable/) · [httpx](https://www.python-httpx.org/) · [structlog](https://www.structlog.org/en/stable/) |
+| **Cluster + metrics** | minikube, kube-prometheus-stack (Prometheus + Alertmanager), Helm | [minikube](https://minikube.sigs.k8s.io/docs/) · [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) · [Helm](https://helm.sh/docs/) |
+| **VCS integration** | GitHub REST API | [docs.github.com/rest](https://docs.github.com/en/rest) |
+| **Tests** | pytest (unit / integration / e2e) | [docs.pytest.org](https://docs.pytest.org/) |
+| **Persistence** | SQLite (WAL) incident store + JSONL audit log | — |
+
+### TrueForge — how it fits
+
+SENTINEL runs entirely inside the [TrueForge](https://github.com/truefoundry/trueforge) harness; the loop, tool calls, sandbox and approval pause are the harness, not our code.
+
+- **Agent + model** — defined in `config/agent.yaml`.
+- **MCP connectors** — `config/mcp-connectors.yaml` registers the Kubernetes, Prometheus and GitHub servers; TrueForge brokers every tool call the agent makes.
+- **Runbooks as skills** — `skills/INC-00{1,2,3}-*.md`, loaded on demand per incident type.
+- **Parallel sub-agents** — the four inspectors (K8s, API, logs, DB) run as concurrent TrueForge sub-agents and their results are merged.
+- **Human-in-the-loop** — the approval card (RCA, fix diff, risk score, sandbox result) is rendered by TrueForge's generative UI (`ui/`); the decision returns via `POST /api/v1/approvals/<incident_id>` and unblocks remediation.
+- **Session** — incident state survives reconnects.
+
+Docs: [github.com/truefoundry/trueforge](https://github.com/truefoundry/trueforge) · [docs.truefoundry.com](https://docs.truefoundry.com/) · run it with `npx @truefoundry/trueforge`.
+
+### Qodo — how it fits
+
+Code review is part of the build: every substantive change merges through a GitHub pull request reviewed by [Qodo](https://www.qodo.ai/) before a human merges it.
+
+- Installed on the repo on day one (Integrations → SaaS → GitHub).
+- Branch → PR → Qodo review → decision → follow-up review → human merge.
+- Every valid **High**-severity finding is fixed; anything dismissed is recorded with a reason in the Qodo thread.
+- Qodo's whole-repo understanding caught cross-file issues in the `kubectl` apply path and the approval state machine that a diff-only review would miss.
+
+Docs: [docs.qodo.ai](https://docs.qodo.ai/) · [Qodo Merge docs](https://qodo-merge-docs.qodo.ai/). See **Qodo Code Review Evidence** below.
+
+---
+
 ## Repository layout
 
 ```
@@ -138,3 +203,13 @@ auto-merge without approval. See `SENTINEL_PRD.md` §2 and `docs/technical-debt.
 - `security/input_sanitizer.py` blocks dangerous shell patterns and non-read-only `kubectl`.
 - Secrets are masked in every log line; `security/audit_logger.py` records every action.
 - K8s access via a minimal-permission ServiceAccount (`deploy/k8s-manifests/rbac.yaml`).
+
+---
+
+## Qodo Code Review Evidence
+
+Every substantive change was merged through a pull request reviewed by Qodo before a human merged it — no direct pushes to `main`.
+
+- **Representative PR:** [#5 — fix(crashloop): INC-2026-001 memory-limit patch](https://github.com/K-aligrapher/sentinel-op/pull/5) <!-- swap for your strongest merged PR -->
+- **What Qodo surfaced / what we did:** _<one or two sentences — e.g. "Qodo flagged that the approval future could resolve after the fix was already applied; we reordered the apply/verify steps and added a regression test. One High finding on a test fixture was dismissed with a reason in the thread."_>
+- **PR history:** [all pull requests](https://github.com/K-aligrapher/sentinel-op/pulls?q=is%3Apr) — each shows the completed Qodo review, our decisions, and a follow-up review against the final code.
