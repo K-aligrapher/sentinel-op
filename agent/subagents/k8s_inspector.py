@@ -23,6 +23,8 @@ class K8sResult:
     exit_code: int | None
     memory_usage: str
     events: list[str] = field(default_factory=list)
+    container: str = "app"
+    owner: str = ""
     degraded: bool = False
     error: str | None = None
 
@@ -64,5 +66,10 @@ def inspect(pod: str, ns: str = "default") -> K8sResult:
     )
     memory_usage = top.split()[2] if len(top.split()) >= 3 else "unknown"
     events = [line.strip() for line in lines if "Warning" in line or "Error" in line]
+    container = _run(["kubectl", "get", "pod", pod, "-n", ns,
+                      "-o", "jsonpath={.spec.containers[0].name}"]).strip() or "app"
+    owner = _run(["kubectl", "get", "pod", pod, "-n", ns,
+                  "-o", "jsonpath={.metadata.ownerReferences[0].name}"]).strip()
 
-    return K8sResult(pod, ns, status, restart_count, exit_code, memory_usage, events)
+    return K8sResult(pod, ns, status, restart_count, exit_code, memory_usage,
+                     events, container=container, owner=owner)

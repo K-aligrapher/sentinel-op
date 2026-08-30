@@ -23,7 +23,7 @@ Response: `202 {"received": <n>}`. Each alert is handled on its own task.
 |--------|----------|---------|
 | `agent.core.orchestrator` | `investigate(incident_id, pod, ns, prom_url) -> dict` | Run 4 subagents in parallel, return `{results, aggregate, rca, elapsed_s}` |
 | `agent.core.orchestrator` | `Orchestrator.handle_alert(alert) -> dict` | Full lifecycle; session always persisted |
-| `agent.core.rca_synthesizer` | `synthesize(*, k8s, api, logs, db, meta=None) -> dict` | `summary, root_cause, evidence, proposed_fix, risk_score, confidence` |
+| `agent.core.rca_synthesizer` | `synthesize(*, k8s, api, logs, db, meta=None) -> dict` | `summary, root_cause, evidence, proposed_fix, fix_plan, risk_score, confidence` |
 | `agent.core.aggregator` | `aggregate(k8s, api, logs, db) -> dict` | `subagents, degraded, complete, results` |
 | `tools.sandbox_executor` | `exec_in_sandbox(script, incident_id, label) -> dict` | `status` ∈ `OK / FAIL / BLOCKED / SKIPPED / ERROR`; workspace always destroyed |
 | `tools.approval_handler` | `ApprovalProvider.request(*, incident_id, rca, risk_score, sandbox_result) -> Decision` | `APPROVED / REJECTED / ESCALATED`; timeout → escalate |
@@ -31,6 +31,19 @@ Response: `202 {"received": <n>}`. Each alert is handled on its own task.
 | `session.pattern_matcher` | `find_similar_patterns(...) -> list`, `suggest_from_history(type) -> str \| None` | Returns `[]` / `None`, never raises |
 | `security.input_sanitizer` | `is_safe_command(cmd) -> bool`, `mask_secrets(text) -> str` | Command allowlist + secret redaction |
 | `security.secrets` | `validate_env() -> dict` | Exits if a required secret is missing |
+
+## fix_plan shape
+
+`rca["fix_plan"]` is what `Orchestrator._apply_fix` executes:
+
+| kind | verb | action |
+|------|------|--------|
+| `memory_limit` | `patch` | `kubectl patch deployment <name> -p <strategic-merge raising container mem limit/request>` |
+| `rollback` | `rollout` | `kubectl rollout undo deployment/<name>` |
+| `pool_and_timeout` | `null` | `status: MANUAL` — app-config change, no cluster write |
+| `manual` | `null` | `status: MANUAL` — escalate |
+
+`<name>` = k8s subagent `owner` with the ReplicaSet hash stripped (heuristic).
 
 ## Subagent result dataclasses
 

@@ -22,6 +22,15 @@ def _recommend_mib(peak_mib: float) -> int:
     return max(256, int(math.ceil(peak_mib * 1.6 / 128) * 128))
 
 
+def _memory_patch(container: str, limit_mib: int) -> dict:
+    """Strategic-merge patch that raises one container's memory limit/request on its Deployment."""
+    return {"spec": {"template": {"spec": {"containers": [{
+        "name": container,
+        "resources": {"limits": {"memory": f"{limit_mib}Mi"},
+                      "requests": {"memory": f"{max(limit_mib // 2, 128)}Mi"}},
+    }]}}}}
+
+
 def synthesize(*, k8s: dict, api: dict, logs: dict, db: dict, meta: dict | None = None) -> dict:
     """Synthesize an RCA dict (summary, root_cause, evidence, proposed_fix, risk_score, confidence)."""
     oom = k8s.get("exit_code") == 137 or bool(logs.get("oom_detected"))
@@ -40,15 +49,24 @@ def synthesize(*, k8s: dict, api: dict, logs: dict, db: dict, meta: dict | None 
     ]))
 
     peak_mib = _to_mib(str(k8s.get("memory_usage", ""))) or (512.0 if oom else None)
-    proposed_fix = (
-        f"Increase container memory limit to {_recommend_mib(peak_mib)}Mi (observed peak ~{int(peak_mib)}Mi)"
-        if oom and peak_mib else
-        "Increase DB connection pool max (or add PgBouncer) and set a statement timeout"
-        if pool_ratio > 0.8 else
-        "Roll back the most recent deployment and scale replicas +1"
-        if err_rate > 0.05 else
-        "Root cause not conclusive from automated signals — escalate for manual review"
-    )
+    container = str(k8s.get("container") or "app")
+
+    if oom and peak_mib:
+        limit = _recommend_mib(peak_mib)
+        summary = f"Increase {container} memory limit to {limit}Mi (observed peak ~{int(peak_mib)}Mi)"
+        fix_plan = {"kind": "memory_limit", "verb": "patch", "resource": "deployment",
+                    "patch": _memory_patch(container, limit), "summary": summary}
+    elif pool_ratio > 0.8:
+        summary = "Increase DB connection pool max (or add PgBouncer) and set a statement timeout"
+        fix_plan = {"kind": "pool_and_timeout", "verb": None, "resource": None,
+                    "patch": None, "summary": summary}
+    elif err_rate > 0.05:
+        summary = "Roll back the most recent deployment (kubectl rollout undo)"
+        fix_plan = {"kind": "rollback", "verb": "rollout", "resource": "deployment",
+                    "args": ["undo"], "summary": summary}
+    else:
+        summary = "Root cause not conclusive from automated signals — escalate for manual review"
+        fix_plan = {"kind": "manual", "verb": None, "resource": None, "patch": None, "summary": summary}
 
     risk_score = 2 if oom else 4 if pool_ratio > 0.8 else 6 if err_rate > 0.05 else 8
     incomplete = bool(meta and meta.get("degraded"))
@@ -58,7 +76,8 @@ def synthesize(*, k8s: dict, api: dict, logs: dict, db: dict, meta: dict | None 
         "summary": "; ".join(signals) or "Root cause unclear — escalating for manual review",
         "root_cause": signals[0] if signals else "Unknown",
         "evidence": signals,
-        "proposed_fix": proposed_fix,
+        "proposed_fix": summary,
+        "fix_plan": fix_plan,
         "risk_score": min(risk_score + (1 if incomplete else 0), 10),
         "confidence": confidence,
         "incomplete_investigation": incomplete,

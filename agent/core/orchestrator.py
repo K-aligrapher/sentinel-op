@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import subprocess
 import time
 import traceback
@@ -50,6 +51,15 @@ _SUBAGENTS = ("k8s", "api", "logs", "db")
 def _skills_dir() -> Path:
     """Directory holding the SKILL.md runbooks ($SKILLS_DIR or <repo>/skills)."""
     return Path(os.getenv("SKILLS_DIR", str(Path(__file__).resolve().parents[2] / "skills")))
+
+
+def _run_kubectl(args: list[str]) -> str:
+    """Run a read-only kubectl query (argv, shell=False); '' if kubectl is absent or fails."""
+    try:
+        return subprocess.run(["kubectl", *args], capture_output=True, text=True,
+                              timeout=15, check=False).stdout.strip()
+    except (subprocess.SubprocessError, OSError):
+        return ""
 
 
 def _as_dict(obj: object) -> dict:
@@ -164,7 +174,9 @@ class Orchestrator:
         )
 
         if decision is Decision.APPROVED:
-            applied = await asyncio.to_thread(self._apply_fix, incident_id, inv["rca"], pod, ns)
+            applied = await asyncio.to_thread(
+                self._apply_fix, incident_id, inv["rca"], inv["results"]["k8s"], pod, ns
+            )
             resolved = await self._verify_resolved(incident_id, incident_type)
             mark_resolved(incident_id, inv["rca"]["proposed_fix"], decision.value, resolved)
             log.info("incident.closed", incident_id=incident_id, resolved=resolved, applied=applied.get("status"))
@@ -179,20 +191,42 @@ class Orchestrator:
             "sandbox": {"diagnose": diagnose, "validate_fix": validate}, **outcome,
         }
 
-    def _apply_fix(self, incident_id: str, rca: dict, pod: str, ns: str) -> dict:
-        """Apply the approved change via a fixed kubectl argv (shell=False); tolerate a missing cluster."""
-        cmd = ["kubectl", "patch", "deployment", pod, "-n", ns, "--type", "merge",
-               "-p", json.dumps({"metadata": {"annotations": {"sentinel.incident": incident_id}}})]
-        log_action(actor="sentinel-agent", action="kubectl.patch", resource=f"{ns}/{pod}",
-                   incident_id=incident_id, decision="APPROVED", details={"fix": rca["proposed_fix"]})
-        if cmd[1] not in _ALLOWED_WRITE_VERBS:
-            return {"status": "BLOCKED", "reason": f"write verb {cmd[1]!r} not allowed"}
+    def _deployment_name(self, k8s_result: dict, pod: str, ns: str) -> str:
+        """Best-effort Deployment name: k8s subagent ownerRef with the ReplicaSet hash stripped."""
+        owner = str(k8s_result.get("owner", "")) or _run_kubectl(
+            ["get", "pod", pod, "-n", ns, "-o", "jsonpath={.metadata.ownerReferences[0].name}"]
+        )
+        return re.sub(r"-[a-f0-9]{7,10}$", "", owner) or pod
+
+    def _apply_fix(self, incident_id: str, rca: dict, k8s_result: dict, pod: str, ns: str) -> dict:
+        """Render the RCA's fix_plan into one kubectl write (argv only) and run it; tolerate no cluster."""
+        plan = rca.get("fix_plan", {"kind": "manual", "verb": None})
+
+        if plan.get("verb") is None:
+            log_action(actor="sentinel-agent", action="escalate.manual", resource=f"{ns}/{pod}",
+                       incident_id=incident_id, decision="APPROVED", details={"fix_plan": plan})
+            return {"status": "MANUAL", "reason": plan.get("summary", "manual remediation required")}
+        if plan["verb"] not in _ALLOWED_WRITE_VERBS:
+            return {"status": "BLOCKED", "reason": f"write verb {plan['verb']!r} not allowed"}
+
+        name = self._deployment_name(k8s_result, pod, ns)
+        log_action(actor="sentinel-agent", action=f"kubectl.{plan['verb']}",
+                   resource=f"{ns}/deployment/{name}", incident_id=incident_id,
+                   decision="APPROVED", details={"fix_plan": plan})
+
+        if plan["verb"] == "patch":
+            cmd = ["kubectl", "patch", "deployment", name, "-n", ns, "-p", json.dumps(plan["patch"])]
+        elif plan["verb"] == "rollout":
+            cmd = ["kubectl", "rollout", *plan.get("args", ["undo"]), f"deployment/{name}", "-n", ns]
+        else:  # scale / set
+            cmd = ["kubectl", plan["verb"], "deployment", name, "-n", ns, *plan.get("args", [])]
+
         try:
             out = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
         except (subprocess.SubprocessError, OSError) as exc:
             log.warning("apply.failed", incident_id=incident_id, error=str(exc))
-            return {"status": "SKIPPED", "error": str(exc)}
-        return {"status": "OK" if out.returncode == 0 else "FAIL",
+            return {"status": "SKIPPED", "error": str(exc), "command": " ".join(cmd)}
+        return {"status": "OK" if out.returncode == 0 else "FAIL", "command": " ".join(cmd),
                 "stdout": out.stdout[-500:], "stderr": out.stderr[-500:]}
 
     async def _verify_resolved(self, incident_id: str, incident_type: str) -> bool:
