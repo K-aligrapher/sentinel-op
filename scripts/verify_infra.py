@@ -2,8 +2,13 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 
 import httpx
+
+# Windows consoles default to cp1252, which cannot encode the ✅/❌ glyphs below.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def _kubectl_ok() -> bool:
