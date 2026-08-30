@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server-7f4d
+  namespace: prod
+  labels:
+    app: api-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
+      containers:
+        - name: app
+          image: python:3.11-slim
+          # Grabs ~260 MB once, then idles. Under the original 32Mi limit this is an
+          # instant OOMKill (exit 137 -> CrashLoopBackOff); once SENTINEL raises the
+          # limit to 896Mi the same workload fits and the pod stays Running.
+          command:
+            - python
+            - -c
+            - "print('boot', flush=True)\nblob = bytearray(260_000_000)\nimport time\nprint('steady', flush=True)\nwhile True:\n    time.sleep(3600)"
+          resources:
+            limits:
+              memory: "32Mi"
+            requests:
+              memory: "32Mi"

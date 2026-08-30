@@ -1,0 +1,620 @@
+<title>Sentinel by YukClara</title>
+<meta name="description" content="Autonomous incident-response console: watches alerts, runs parallel root-cause analysis, proposes a fix, and waits for one human approval.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  /* ---------- tokens : light (bare :root) ---------- */
+  :root{
+    --bg:#eaeef4; --panel:#ffffff; --panel-2:#f3f6fa; --sunk:#eef2f7;
+    --line:#d6deea; --line-soft:#e5ebf3;
+    --ink:#141c2b; --ink-dim:#54637a; --ink-faint:#8593a8;
+    --accent:#0fb4a1; --accent-strong:#0b8f80; --on-accent:#00201c;
+    --crit:#d93a3f; --warn:#c9791f; --ok:#1f9d63; --info:#2f68d0;
+    --scope:rgba(15,180,161,.14); --scope-line:rgba(15,180,161,.55);
+    --grid-line:rgba(20,28,43,.06);
+    --shadow:0 1px 2px rgba(16,24,40,.05), 0 12px 32px rgba(16,24,40,.07);
+    --radius:14px;
+  }
+  /* ---------- tokens : dark via OS, unless an explicit light choice ---------- */
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#070a11; --panel:#0f1521; --panel-2:#0c121c; --sunk:#0a0f18;
+      --line:#1e2a3c; --line-soft:#172232;
+      --ink:#c9d4e6; --ink-dim:#8394ac; --ink-faint:#566577;
+      --accent:#45e3cb; --accent-strong:#63f0da; --on-accent:#00120e;
+      --crit:#ff5d5d; --warn:#f4a63c; --ok:#46d98a; --info:#5f92f0;
+      --scope:rgba(69,227,203,.13); --scope-line:rgba(69,227,203,.5);
+      --grid-line:rgba(120,150,190,.08);
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 14px 38px rgba(0,0,0,.4);
+    }
+  }
+  /* ---------- tokens : explicit dark choice ---------- */
+  :root[data-theme="dark"]{
+    --bg:#070a11; --panel:#0f1521; --panel-2:#0c121c; --sunk:#0a0f18;
+    --line:#1e2a3c; --line-soft:#172232;
+    --ink:#c9d4e6; --ink-dim:#8394ac; --ink-faint:#566577;
+    --accent:#45e3cb; --accent-strong:#63f0da; --on-accent:#00120e;
+    --crit:#ff5d5d; --warn:#f4a63c; --ok:#46d98a; --info:#5f92f0;
+    --scope:rgba(69,227,203,.13); --scope-line:rgba(69,227,203,.5);
+    --grid-line:rgba(120,150,190,.08);
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 14px 38px rgba(0,0,0,.4);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),
+                     linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+    background-size:44px 44px;
+  }
+  h1,h2,h3{font-family:"Chakra Petch","IBM Plex Sans",sans-serif; margin:0; font-weight:600; text-wrap:balance}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric:tabular-nums}
+  a{color:var(--accent-strong)}
+
+  .wrap{max-width:1440px; margin:0 auto; padding:20px}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+    padding:14px 18px; border:1px solid var(--line); border-radius:var(--radius);
+    background:var(--panel); box-shadow:var(--shadow); position:sticky; top:12px; z-index:20;
+  }
+  .brand{display:flex; align-items:center; gap:12px; min-width:0}
+  .brand .mark{width:38px; height:38px; flex:none}
+  .brand .name{font-family:"Chakra Petch",sans-serif; font-weight:700; letter-spacing:.14em;
+    font-size:17px; line-height:1; text-transform:uppercase}
+  .brand .sub{font-size:11px; letter-spacing:.28em; text-transform:uppercase; color:var(--ink-faint); margin-top:4px}
+  .rule{width:1px; align-self:stretch; background:var(--line)}
+  .env{display:flex; gap:8px; flex-wrap:wrap; flex:1; min-width:200px}
+  .pill{
+    display:inline-flex; align-items:center; gap:7px; padding:5px 10px;
+    border:1px solid var(--line); border-radius:999px; background:var(--panel-2);
+    font-size:11.5px; letter-spacing:.03em; white-space:nowrap;
+  }
+  .pill .dot{width:7px; height:7px; border-radius:50%; background:var(--ok); flex:none;
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
+  .pill.down .dot{background:var(--ink-faint); box-shadow:none}
+  .pill.warnstate .dot{background:var(--warn); box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 22%,transparent)}
+  .pill b{font-weight:600}
+  .pill span{color:var(--ink-dim)}
+
+  button{font:inherit; cursor:pointer}
+  .btn{
+    display:inline-flex; align-items:center; gap:9px; padding:9px 16px; border-radius:10px;
+    border:1px solid var(--accent); background:var(--accent); color:var(--on-accent);
+    font-family:"Chakra Petch",sans-serif; font-weight:600; letter-spacing:.04em; font-size:13px;
+    transition:transform .12s ease, filter .12s ease;
+  }
+  .btn:hover{filter:brightness(1.06)}
+  .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent; color:var(--ink); border-color:var(--line)}
+  .btn.danger{background:transparent; color:var(--crit); border-color:color-mix(in srgb,var(--crit) 45%,var(--line))}
+  .btn:disabled{opacity:.42; cursor:not-allowed; filter:none; transform:none}
+  .btn svg{width:15px; height:15px}
+  .theme-toggle{margin-left:auto; width:34px; height:34px; display:grid; place-items:center;
+    border-radius:9px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink-dim)}
+
+  /* ---------- layout ---------- */
+  .grid{display:grid; grid-template-columns:296px minmax(0,1fr) 372px; gap:16px; margin-top:16px}
+  @media (max-width:1180px){ .grid{grid-template-columns:1fr} }
+  .col{display:flex; flex-direction:column; gap:16px; min-width:0}
+
+  .card{border:1px solid var(--line); border-radius:var(--radius); background:var(--panel); box-shadow:var(--shadow)}
+  .card > .hd{
+    display:flex; align-items:center; gap:10px; padding:12px 15px; border-bottom:1px solid var(--line-soft);
+  }
+  .card > .hd h2,.card > .hd h3{font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-dim); font-weight:600}
+  .card > .hd .tag{margin-left:auto; font-size:11px; color:var(--ink-faint)}
+  .card > .bd{padding:15px}
+
+  /* ---------- KPI ---------- */
+  .kpis{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line-soft); border-radius:var(--radius); overflow:hidden; border:1px solid var(--line)}
+  .kpi{background:var(--panel); padding:13px 14px}
+  .kpi .v{font-family:"Chakra Petch",sans-serif; font-size:24px; font-weight:700; line-height:1.1; letter-spacing:.01em}
+  .kpi .l{font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-faint); margin-top:5px}
+  .kpi .v small{font-size:13px; color:var(--ink-dim); font-weight:500}
+  .kpi.accent .v{color:var(--accent-strong)}
+
+  /* ---------- incident queue ---------- */
+  .queue{display:flex; flex-direction:column}
+  .qrow{
+    display:grid; grid-template-columns:auto 1fr auto; gap:4px 10px; align-items:center;
+    padding:11px 15px; border-bottom:1px solid var(--line-soft); cursor:pointer; position:relative;
+  }
+  .qrow:last-child{border-bottom:0}
+  .qrow:hover{background:var(--panel-2)}
+  .qrow.active{background:color-mix(in srgb,var(--accent) 9%,var(--panel))}
+  .qrow.active::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent)}
+  .qrow .id{font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:500}
+  .qrow .meta{grid-column:2/3; font-size:11.5px; color:var(--ink-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .qrow .st{grid-row:1/3; grid-column:3/4; font-size:10px; letter-spacing:.06em; text-transform:uppercase; font-weight:600; padding:3px 8px; border-radius:6px; border:1px solid transparent; white-space:nowrap}
+  .st.await{color:var(--warn); background:color-mix(in srgb,var(--warn) 12%,transparent); border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+  .st.fixed{color:var(--ok); background:color-mix(in srgb,var(--ok) 12%,transparent); border-color:color-mix(in srgb,var(--ok) 28%,transparent)}
+  .st.esc{color:var(--ink-dim); background:var(--sunk); border-color:var(--line)}
+  .st.run{color:var(--info); background:color-mix(in srgb,var(--info) 12%,transparent); border-color:color-mix(in srgb,var(--info) 30%,transparent)}
+
+  /* ---------- active incident ---------- */
+  .incident-hd{display:flex; align-items:flex-start; gap:16px; padding:16px 18px}
+  .incident-hd .who{flex:1; min-width:0}
+  .incident-hd .who .k{font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint)}
+  .incident-hd .who h1{font-size:21px; margin:5px 0 6px; letter-spacing:.02em}
+  .incident-hd .who .d{font-size:12.5px; color:var(--ink-dim)}
+  .incident-hd .who .d b{color:var(--ink); font-weight:600}
+  .sev{font-family:"Chakra Petch",sans-serif; font-weight:700; font-size:11px; letter-spacing:.12em;
+    text-transform:uppercase; padding:5px 10px; border-radius:7px; color:#fff; background:var(--crit); flex:none}
+
+  .stepline{display:flex; gap:0; padding:0 18px 16px}
+  .step{flex:1; display:flex; flex-direction:column; gap:6px; position:relative}
+  .step .bar{height:3px; border-radius:2px; background:var(--line)}
+  .step.on .bar{background:var(--accent)}
+  .step.on.warn .bar{background:var(--warn)}
+  .step .t{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint)}
+  .step.on .t{color:var(--ink-dim)}
+
+  /* subagents 2x2 */
+  .agents{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .agent{border:1px solid var(--line); border-radius:11px; background:var(--panel-2); padding:12px 13px; min-height:104px; display:flex; flex-direction:column; gap:7px}
+  .agent .top{display:flex; align-items:center; gap:8px}
+  .agent .top .ic{width:24px; height:24px; border-radius:7px; display:grid; place-items:center; background:var(--sunk); color:var(--ink-dim); flex:none}
+  .agent .top .ic svg{width:14px; height:14px}
+  .agent .top .nm{font-family:"Chakra Petch",sans-serif; font-weight:600; font-size:12px; letter-spacing:.04em}
+  .agent .top .badge{margin-left:auto; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; padding:2px 6px; border-radius:5px}
+  .agent .finding{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--ink-dim); line-height:1.55}
+  .agent[data-state="pending"] .finding{opacity:.4}
+  .agent[data-state="pending"] .badge{color:var(--ink-faint); background:var(--sunk)}
+  .agent[data-state="scanning"] .badge{color:var(--info); background:color-mix(in srgb,var(--info) 14%,transparent)}
+  .agent[data-state="ok"] .badge{color:var(--ok); background:color-mix(in srgb,var(--ok) 14%,transparent)}
+  .agent[data-state="ok"] .ic{color:var(--ok)}
+  .agent[data-state="degraded"] .badge{color:var(--warn); background:color-mix(in srgb,var(--warn) 14%,transparent)}
+  .agent[data-state="scanning"] .ic{color:var(--info); animation:pulse 1s ease-in-out infinite}
+
+  /* RCA */
+  .rca{display:grid; grid-template-columns:1fr 132px; gap:16px}
+  @media (max-width:520px){ .rca{grid-template-columns:1fr} }
+  .rca .cause{font-size:13.5px; line-height:1.6}
+  .rca .cause .lead{color:var(--ink-faint); font-size:11px; letter-spacing:.14em; text-transform:uppercase; display:block; margin-bottom:5px}
+  .diff{margin-top:12px; border:1px solid var(--line); border-radius:9px; overflow:hidden; font-family:"IBM Plex Mono",monospace; font-size:11.5px}
+  .diff div{padding:6px 11px; display:flex; gap:10px}
+  .diff .rm{background:color-mix(in srgb,var(--crit) 9%,transparent); color:var(--ink)}
+  .diff .ad{background:color-mix(in srgb,var(--ok) 10%,transparent); color:var(--ink)}
+  .diff .mk{color:var(--ink-faint); user-select:none}
+  .gauge{display:flex; flex-direction:column; align-items:center; gap:6px; justify-content:center}
+  .gauge svg{width:112px; height:112px; transform:rotate(-90deg)}
+  .gauge .num{font-family:"Chakra Petch",sans-serif; font-weight:700; font-size:15px}
+  .gauge .cap{font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint)}
+  .metaline{display:flex; flex-wrap:wrap; gap:7px; margin-top:14px}
+  .chip{font-size:11px; padding:4px 9px; border-radius:7px; background:var(--panel-2); border:1px solid var(--line); color:var(--ink-dim)}
+  .chip b{color:var(--ink); font-weight:600}
+
+  /* approval */
+  .approve{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 15px; border-top:1px solid var(--line-soft); background:var(--panel-2); border-radius:0 0 var(--radius) var(--radius)}
+  .approve .q{flex:1; min-width:200px; font-size:12.5px; color:var(--ink-dim)}
+  .approve .q b{color:var(--ink)}
+  .approve .route{font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--ink-faint); display:block; margin-top:3px}
+
+  /* ---------- event stream ---------- */
+  .stream{max-height:340px; overflow-y:auto; padding:6px 0}
+  .ev{display:grid; grid-template-columns:58px 1fr; gap:10px; padding:5px 15px; font-family:"IBM Plex Mono",monospace; font-size:11px; line-height:1.5}
+  .ev .ts{color:var(--ink-faint)}
+  .ev .msg{color:var(--ink-dim); word-break:break-word}
+  .ev .msg .e{color:var(--ink); font-weight:500}
+  .ev.lv-error .msg .e{color:var(--crit)}
+  .ev.lv-warn .msg .e{color:var(--warn)}
+  .ev.lv-good .msg .e{color:var(--ok)}
+  .ev.fresh{animation:slidein .35s ease}
+  .stream::-webkit-scrollbar{width:9px}
+  .stream::-webkit-scrollbar-thumb{background:var(--line); border-radius:9px}
+
+  .audit .bd{padding:0}
+  .arow{display:grid; grid-template-columns:1fr auto; gap:3px 12px; padding:10px 15px; border-bottom:1px solid var(--line-soft); font-size:11.5px}
+  .arow:last-child{border-bottom:0}
+  .arow .a{font-family:"IBM Plex Mono",monospace; color:var(--ink)}
+  .arow .r{font-family:"IBM Plex Mono",monospace; color:var(--ink-dim); font-size:10.5px}
+  .arow .stamp{color:var(--ink-faint); font-size:10.5px; text-align:right}
+  .arow .by{color:var(--accent-strong); font-size:10.5px; text-align:right; letter-spacing:.04em}
+
+  .cli{font-family:"IBM Plex Mono",monospace; font-size:11px; background:var(--sunk); border:1px solid var(--line); border-radius:9px; padding:11px 13px; color:var(--ink-dim); line-height:1.7; overflow-x:auto}
+  .cli .p{color:var(--accent-strong)}
+  .cli .c{color:var(--ink)}
+
+  .foot{margin-top:18px; padding:14px 4px; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    font-size:11px; color:var(--ink-faint); letter-spacing:.03em}
+
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @keyframes slidein{from{opacity:0; transform:translateY(-5px)}to{opacity:1; transform:none}}
+  @keyframes sweep{to{transform:rotate(360deg)}}
+  .sweep{transform-origin:50% 50%; animation:sweep 4s linear infinite}
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
+  }
+  [hidden]{display:none !important}
+</style>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <path d="M24 3.5 41.5 11v13c0 11-7.6 18.6-17.5 21.5C14.1 42.6 6.5 35 6.5 24V11L24 3.5Z"
+              stroke="var(--accent)" stroke-width="2.2" fill="var(--scope)"/>
+        <circle cx="24" cy="23" r="10.5" stroke="var(--accent)" stroke-width="1.3" opacity=".55"/>
+        <circle cx="24" cy="23" r="5" stroke="var(--accent)" stroke-width="1.3" opacity=".8"/>
+        <g class="sweep"><path d="M24 23 L24 8 A15 15 0 0 1 37.5 18 Z" fill="var(--scope-line)"/></g>
+        <circle cx="24" cy="23" r="2" fill="var(--accent)"/>
+      </svg>
+      <div>
+        <div class="name">Sentinel</div>
+        <div class="sub">by YukClara</div>
+      </div>
+    </div>
+    <div class="rule"></div>
+    <div class="env" id="env">
+      <span class="pill"><span class="dot"></span><b>minikube</b><span>Ready&nbsp;· v1.35.1</span></span>
+      <span class="pill"><span class="dot"></span><b>Prometheus</b><span>:9090</span></span>
+      <span class="pill"><span class="dot"></span><b>Agent</b><span>:9093</span></span>
+      <span class="pill warnstate"><span class="dot"></span><b>Sandbox</b><span>provider offline</span></span>
+    </div>
+    <button class="btn" id="trigger">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
+      Trigger incident
+    </button>
+    <button class="theme-toggle" id="tt" title="Toggle theme" aria-label="Toggle colour theme">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5 4 4M20 20l-1-1M19 5l1-1M4 20l1-1" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <div class="grid">
+    <!-- LEFT ------------------------------------------------ -->
+    <div class="col">
+      <div class="kpis" id="kpis">
+        <div class="kpi accent"><div class="v" data-k="handled">9</div><div class="l">Incidents handled</div></div>
+        <div class="kpi"><div class="v" data-k="rca">0.9<small>s</small></div><div class="l">Mean time to RCA</div></div>
+        <div class="kpi"><div class="v" data-k="mttr">2.1<small>m</small></div><div class="l">Mean time to fix</div></div>
+        <div class="kpi"><div class="v" data-k="await">1</div><div class="l">Awaiting approval</div></div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h2>Incident queue</h2><span class="tag" id="qtag">today</span></div>
+        <div class="queue" id="queue"></div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h2>How it runs</h2></div>
+        <div class="bd">
+          <div class="cli">
+<span class="p">$</span> <span class="c">python scripts/trigger_alert.py crashloop</span>
+<span class="p">$</span> <span class="c">curl -XPOST localhost:9093/api/v1/approvals/&lt;id&gt; \</span>
+     <span class="c">-d '{"decision":"APPROVED"}'</span>
+          </div>
+          <p style="font-size:11.5px;color:var(--ink-dim);margin:11px 0 0">
+            Alertmanager webhook in, one approval callback out. No dashboard lock-in —
+            every run is also written to <span class="mono">logs/sentinel.jsonl</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER --------------------------------------------- -->
+    <div class="col">
+      <div class="card">
+        <div class="incident-hd">
+          <div class="who">
+            <div class="k">Active incident</div>
+            <h1 id="inc-id">INC-2026-009</h1>
+            <div class="d" id="inc-desc"><b>CrashLoopBackOff</b> · <span class="mono">prod/api-server-7f4d</span> · runbook <span class="mono">INC-001</span></div>
+          </div>
+          <div class="sev" id="inc-sev">Critical</div>
+        </div>
+
+        <div class="stepline" id="steps">
+          <div class="step on"><div class="bar"></div><div class="t">Alert</div></div>
+          <div class="step on"><div class="bar"></div><div class="t">Investigate</div></div>
+          <div class="step on"><div class="bar"></div><div class="t">Synthesize</div></div>
+          <div class="step on warn"><div class="bar"></div><div class="t">Approve</div></div>
+          <div class="step"><div class="bar"></div><div class="t">Remediate</div></div>
+          <div class="step"><div class="bar"></div><div class="t">Verify</div></div>
+        </div>
+
+        <div class="bd" style="border-top:1px solid var(--line-soft)">
+          <div class="agents" id="agents">
+            <div class="agent" data-state="ok" data-agent="k8s">
+              <div class="top">
+                <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Z"/><path d="M12 22V12M3 7l9 5 9-5"/></svg></span>
+                <span class="nm">K8s Inspector</span><span class="badge">ok</span>
+              </div>
+              <div class="finding">OOMKilled · exit 137 · restarts 6<br>limit 32Mi · owner deploy/api-server-7f4d</div>
+            </div>
+            <div class="agent" data-state="ok" data-agent="logs">
+              <div class="top">
+                <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5" stroke-linecap="round"/></svg></span>
+                <span class="nm">Log Analyzer</span><span class="badge">ok</span>
+              </div>
+              <div class="finding">no app error lines<br>container killed by signal 9 (OOM)</div>
+            </div>
+            <div class="agent" data-state="degraded" data-agent="api">
+              <div class="top">
+                <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M4 6h16M4 18h16" stroke-linecap="round"/></svg></span>
+                <span class="nm">API Inspector</span><span class="badge">degraded</span>
+              </div>
+              <div class="finding">no http_requests_total<br>samples in window — skipped</div>
+            </div>
+            <div class="agent" data-state="degraded" data-agent="db">
+              <div class="top">
+                <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/></svg></span>
+                <span class="nm">DB Inspector</span><span class="badge">degraded</span>
+              </div>
+              <div class="finding">no pg_stat_database<br>metrics — skipped</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bd" style="border-top:1px solid var(--line-soft)">
+          <div class="rca">
+            <div class="cause">
+              <span class="lead">Root cause</span>
+              <span id="rca-text">Container <b>app</b> exceeded its 32Mi memory limit and was <b>OOMKilled</b> (exit 137), driving the pod into CrashLoopBackOff. One high-confidence signal from the cluster; API and DB telemetry absent, so nothing was inferred from them.</span>
+              <div class="diff">
+                <div class="rm"><span class="mk">-</span> resources.limits.memory: 32Mi</div>
+                <div class="ad"><span class="mk">+</span> resources.limits.memory: 896Mi&nbsp;&nbsp;(request 448Mi)</div>
+              </div>
+              <div class="metaline">
+                <span class="chip">plan <b>memory_limit</b></span>
+                <span class="chip">action <b>kubectl patch deploy</b></span>
+                <span class="chip">blast radius <b>1 pod</b></span>
+                <span class="chip">observed peak <b>~512Mi</b></span>
+              </div>
+            </div>
+            <div class="gauge">
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="var(--line)" stroke-width="10"/>
+                <circle id="riskarc" cx="60" cy="60" r="50" fill="none" stroke="var(--ok)" stroke-width="10"
+                        stroke-linecap="round" stroke-dasharray="314.159" stroke-dashoffset="219.9"/>
+              </svg>
+              <div class="num" id="riskn">3 / 10</div>
+              <div class="cap">Risk score</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="approve" id="approve">
+          <div class="q">
+            <b>Approve the memory-limit patch?</b> Sentinel will not write to the cluster without this.
+            <span class="route">POST /api/v1/approvals/INC-2026-009</span>
+          </div>
+          <button class="btn danger" id="reject">Reject</button>
+          <button class="btn" id="approveBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>
+            Approve fix
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT --------------------------------------------- -->
+    <div class="col">
+      <div class="card">
+        <div class="hd"><h3>Event stream</h3><span class="tag mono" id="evsrc">logs/sentinel.jsonl</span></div>
+        <div class="stream" id="stream"></div>
+      </div>
+
+      <div class="card audit">
+        <div class="hd"><h3>Audit trail</h3><span class="tag mono">logs/audit.jsonl</span></div>
+        <div class="bd" id="audit"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>SENTINEL · autonomous incident response — alert → parallel RCA → one approval → remediate → verify</span>
+    <span class="mono">YukClara · demo console</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(s,r){return (r||document).querySelector(s)};
+  var reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+
+  /* ---- theme toggle (session only) ---- */
+  var root = document.documentElement;
+  try{ var sv = localStorage.getItem("sentinel-theme"); if(sv) root.setAttribute("data-theme", sv); }catch(e){}
+  $("#tt").addEventListener("click", function(){
+    var cur = root.getAttribute("data-theme");
+    var next = cur === "dark" ? "light" : cur === "light" ? "dark"
+             : (matchMedia("(prefers-color-scheme:dark)").matches ? "light" : "dark");
+    root.setAttribute("data-theme", next);
+    try{ localStorage.setItem("sentinel-theme", next); }catch(e){}
+  });
+
+  /* ---- incident queue (from the real session log) ---- */
+  var Q = [
+    {id:"INC-2026-009", meta:"crashloop · prod/api-server-7f4d", st:"await", cls:"await"},
+    {id:"INC-2026-008", meta:"crashloop · patched 32Mi → 896Mi", st:"fixed", cls:"fixed"},
+    {id:"INC-2026-007", meta:"crashloop · patched · pod recovered", st:"fixed", cls:"fixed"},
+    {id:"INC-2026-006", meta:"crashloop · patched · pod recovered", st:"fixed", cls:"fixed"},
+    {id:"INC-2026-005", meta:"crashloop · approval timed out", st:"escalated", cls:"esc"},
+    {id:"INC-2026-004", meta:"crashloop · signals absent → human", st:"escalated", cls:"esc"},
+    {id:"INC-2026-003", meta:"crashloop · signals absent → human", st:"escalated", cls:"esc"},
+    {id:"INC-2026-002", meta:"crashloop · signals absent → human", st:"escalated", cls:"esc"},
+    {id:"INC-2026-001", meta:"crashloop · signals absent → human", st:"escalated", cls:"esc"}
+  ];
+  function paintQueue(){
+    var q = $("#queue"); q.innerHTML = "";
+    Q.forEach(function(r,i){
+      var el = document.createElement("div");
+      el.className = "qrow" + (i===0 ? " active" : "");
+      el.innerHTML = '<span class="id">'+r.id+'</span>'
+        + '<span class="meta">'+r.meta+'</span>'
+        + '<span class="st '+r.cls+'">'+r.st+'</span>';
+      q.appendChild(el);
+    });
+  }
+  paintQueue();
+
+  /* ---- event stream ---- */
+  var stream = $("#stream");
+  function clk(t){ return t.toLocaleTimeString([], {hour12:false}); }
+  function ev(level, event, detail, fresh){
+    var row = document.createElement("div");
+    row.className = "ev lv-"+(level||"info") + (fresh ? " fresh" : "");
+    row.innerHTML = '<span class="ts">'+clk(new Date())+'</span>'
+      + '<span class="msg"><span class="e">'+event+'</span> '+(detail||'')+'</span>';
+    stream.appendChild(row);
+    stream.scrollTop = stream.scrollHeight;
+  }
+  // seed with a prior incident's lifecycle so the console reads as live
+  [
+    ["info","alert.received","PodCrashLoopBackOff · prod/api-server-7f4d"],
+    ["info","skill.loaded","runbook INC-001-crashloop · 2125 b"],
+    ["info","incident.opened","INC-2026-008 · pod=api-server-7f4d ns=prod"],
+    ["info","investigation.started","4 inspectors dispatched"],
+    ["good","investigation.complete","0.78s · RCA: OOMKilled — exceeded memory limit (exit 137)"],
+    ["warn","sandbox.error","diagnose · provider offline — proceeding on signals"],
+    ["info","approval.requested","risk 3/10 · fix: raise memory limit to 896Mi"],
+    ["good","approval.callback","APPROVED · matched"],
+    ["good","audit","kubectl.patch → prod/deployment/api-server-7f4d"],
+    ["good","incident.closed","applied=OK · pod api-server-7f4d 1/1 Running"]
+  ].forEach(function(r){ ev(r[0], r[1], r[2], false); });
+
+  /* ---- audit trail ---- */
+  var audit = $("#audit");
+  function arow(action, res, by){
+    var el = document.createElement("div");
+    el.className = "arow";
+    el.innerHTML = '<span class="a">'+action+'</span><span class="stamp">'+clk(new Date())+'</span>'
+      + '<span class="r">'+res+'</span><span class="by">'+(by||'sentinel-agent')+'</span>';
+    audit.insertBefore(el, audit.firstChild);
+  }
+  arow("kubectl.patch", "prod/deployment/api-server-7f4d", "sentinel-agent");
+  arow("approval.decided", "INC-2026-008 · APPROVED", "operator");
+  arow("escalate.manual", "INC-2026-005 · approval timeout", "sentinel-agent");
+
+  /* ---- risk gauge helper ---- */
+  var C = 2 * Math.PI * 50;
+  function setRisk(n){
+    var arc = $("#riskarc");
+    arc.setAttribute("stroke-dashoffset", (C * (1 - n/10)).toFixed(1));
+    arc.setAttribute("stroke", n<=3 ? "var(--ok)" : n<=6 ? "var(--warn)" : "var(--crit)");
+    $("#riskn").textContent = n + " / 10";
+  }
+  setRisk(3);
+
+  /* ---- KPI helper ---- */
+  function kset(k, v){ var el = $('[data-k="'+k+'"]', $("#kpis")); if(el) el.firstChild ? el.innerHTML = v : el.textContent = v; }
+  function kbump(k){ var el = $('[data-k="'+k+'"]', $("#kpis")); if(el) el.textContent = (parseInt(el.textContent,10)||0)+1; }
+
+  /* ---- step line ---- */
+  var steps = $("#steps").children;
+  function setSteps(n, warnIdx){
+    for(var i=0;i<steps.length;i++){
+      steps[i].classList.toggle("on", i<n);
+      steps[i].classList.toggle("warn", i===warnIdx);
+    }
+  }
+
+  /* ---- timeline runner ---- */
+  var busy = false;
+  function run(seq, done){
+    var i = 0;
+    (function nextStep(){
+      if(i>=seq.length){ done && done(); return; }
+      var s = seq[i++];
+      s.do();
+      setTimeout(nextStep, reduce ? 60 : s.wait);
+    })();
+  }
+
+  /* ---- APPROVE current incident ---- */
+  var approveBtn = $("#approveBtn"), rejectBtn = $("#reject"), triggerBtn = $("#trigger");
+  approveBtn.addEventListener("click", function(){
+    if(busy) return; busy = true;
+    approveBtn.disabled = rejectBtn.disabled = true;
+    var id = $("#inc-id").textContent;
+    run([
+      {wait:500, do:function(){ ev("good","approval.callback","APPROVED · matched", true); }},
+      {wait:700, do:function(){
+        ev("good","audit","kubectl.patch → prod/deployment/api-server-7f4d", true);
+        arow("kubectl.patch","prod/deployment/api-server-7f4d","sentinel-agent");
+        setSteps(5);
+      }},
+      {wait:900, do:function(){ ev("info","verify.settling","waiting for rollout · kube-state-metrics rescrape", true); }},
+      {wait:900, do:function(){
+        ev("good","verify.cleared","CrashLoopBackOff alert cleared · pod 1/1 Running", true);
+        setSteps(6);
+      }},
+      {wait:500, do:function(){
+        ev("good","incident.closed", id+" · applied=OK", true);
+        Q[0].st = "fixed"; Q[0].cls = "fixed"; Q[0].meta = "crashloop · patched 32Mi → 896Mi";
+        paintQueue();
+        kbump("handled"); kset("await","0");
+        $("#approve").hidden = true;
+        busy = false;
+      }}
+    ]);
+  });
+  rejectBtn.addEventListener("click", function(){
+    if(busy) return;
+    ev("warn","approval.callback","REJECTED · escalated to on-call", true);
+    arow("escalate.manual", $("#inc-id").textContent+" · operator rejected", "sentinel-agent");
+    Q[0].st="escalated"; Q[0].cls="esc"; Q[0].meta="crashloop · operator rejected"; paintQueue();
+    kset("await","0"); $("#approve").hidden = true;
+  });
+
+  /* ---- TRIGGER a fresh incident ---- */
+  var nextNum = 10;
+  triggerBtn.addEventListener("click", function(){
+    if(busy) return; busy = true;
+    triggerBtn.disabled = true;
+    var id = "INC-2026-0" + (nextNum++);
+    var ags = $("#agents").children;
+    for(var i=0;i<ags.length;i++) ags[i].setAttribute("data-state","pending");
+    $("#approve").hidden = false;
+    approveBtn.disabled = rejectBtn.disabled = false;
+
+    // header + queue
+    $("#inc-id").textContent = id;
+    $("#inc-desc").innerHTML = '<b>CrashLoopBackOff</b> · <span class="mono">prod/api-server-7f4d</span> · runbook <span class="mono">INC-001</span>';
+    $(".approve .route").textContent = "POST /api/v1/approvals/" + id;
+    Q.unshift({id:id, meta:"crashloop · investigating…", st:"running", cls:"run"});
+    paintQueue();
+    kset("await","1");
+    setSteps(1);
+
+    var badge = function(a){ return $('.badge', $('[data-agent="'+a+'"]', $("#agents"))); };
+    var setAg = function(a,st){ $('[data-agent="'+a+'"]', $("#agents")).setAttribute("data-state", st); };
+
+    run([
+      {wait:420, do:function(){ ev("info","alert.received","PodCrashLoopBackOff · prod/api-server-7f4d", true); }},
+      {wait:380, do:function(){ ev("info","skill.loaded","runbook INC-001-crashloop · 2125 b", true); }},
+      {wait:420, do:function(){ ev("info","incident.opened", id+" · pod=api-server-7f4d ns=prod", true); }},
+      {wait:300, do:function(){
+        ev("info","investigation.started","4 inspectors dispatched", true);
+        setSteps(2);
+        ["k8s","logs","api","db"].forEach(function(a){ setAg(a,"scanning"); });
+      }},
+      {wait:650, do:function(){ setAg("k8s","ok");   badge("k8s").textContent="ok"; }},
+      {wait:450, do:function(){ setAg("logs","ok");  badge("logs").textContent="ok"; }},
+      {wait:400, do:function(){ setAg("api","degraded");  badge("api").textContent="degraded"; }},
+      {wait:400, do:function(){ setAg("db","degraded");   badge("db").textContent="degraded"; }},
+      {wait:550, do:function(){
+        ev("good","investigation.complete","0.9s · RCA: OOMKilled — exceeded memory limit (exit 137)", true);
+        setSteps(3);
+      }},
+      {wait:500, do:function(){ ev("warn","sandbox.error","diagnose · provider offline — proceeding on signals", true); }},
+      {wait:500, do:function(){
+        ev("info","approval.requested","risk 3/10 · fix: raise memory limit to 896Mi", true);
+        ev("info","approval.awaiting_callback","route=/api/v1/approvals/"+id, true);
+        setSteps(4, 3);
+        Q[0].meta = "crashloop · prod/api-server-7f4d"; Q[0].st="await"; Q[0].cls="await"; paintQueue();
+        triggerBtn.disabled = false;
+        busy = false;
+      }}
+    ]);
+  });
+})();
+</script>
